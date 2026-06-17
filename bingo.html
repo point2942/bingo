@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>賓果抽籤機</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: #12082e;
+    font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+    color: #fff;
+    overflow: hidden;
+  }
+
+  /* ── Root layout: header + two columns ── */
+  .root {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+  }
+
+  /* ── Header bar ── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.7rem 2rem;
+    background: rgba(255,255,255,0.04);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .header h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 4px;
+    text-shadow: 0 0 20px rgba(160,140,255,0.6);
+    white-space: nowrap;
+  }
+  .header-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .field label {
+    font-size: 0.78rem;
+    color: rgba(255,255,255,0.45);
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  .field input {
+    width: 72px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: center;
+    outline: none;
+  }
+  .field input:focus { border-color: rgba(160,140,255,0.7); }
+
+  .stats-row {
+    display: flex;
+    gap: 0.6rem;
+  }
+  .stat-box {
+    text-align: center;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 4px 14px;
+    min-width: 58px;
+  }
+  .stat-box .val { font-size: 1.2rem; font-weight: 700; color: #c8baff; }
+  .stat-box .lbl { font-size: 0.65rem; color: rgba(255,255,255,0.38); letter-spacing: 1px; }
+
+  /* ── Two columns ── */
+  .columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* ── LEFT: draw panel ── */
+  .left-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 2rem;
+    border-right: 1px solid rgba(255,255,255,0.08);
+    gap: 1.6rem;
+  }
+
+  /* big ball */
+  .ball-ring {
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.3s, box-shadow 0.3s;
+    flex-shrink: 0;
+  }
+  .ball-ring.idle {
+    background: radial-gradient(circle at 38% 35%, rgba(255,255,255,0.08), transparent 55%),
+                conic-gradient(from 0deg, #2a1f5a, #3a2f7a, #2a1f5a);
+    box-shadow: 0 0 40px rgba(80,60,160,0.25);
+  }
+  .ball-ring.active {
+    box-shadow: 0 0 80px rgba(124,92,252,0.55), 0 0 160px rgba(124,92,252,0.2);
+  }
+  .ball-inner {
+    width: 210px;
+    height: 210px;
+    border-radius: 50%;
+    background: #12082e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+  #displayNum {
+    font-size: 7rem;
+    font-weight: 800;
+    line-height: 1;
+    color: #fff;
+    letter-spacing: -3px;
+  }
+  #displayNum.hint {
+    font-size: 1.1rem;
+    font-weight: 400;
+    color: rgba(255,255,255,0.25);
+    letter-spacing: 3px;
+  }
+  .ball-label {
+    font-size: 0.8rem;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 2px;
+    margin-top: 0.5rem;
+  }
+
+  /* buttons */
+  .btn-draw {
+    padding: 16px 56px;
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: 4px;
+    border-radius: 50px;
+    border: none;
+    background: linear-gradient(135deg, #7c5cfc, #c084fc);
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 4px 28px rgba(124,92,252,0.5);
+    transition: transform 0.12s, box-shadow 0.2s;
+    flex-shrink: 0;
+  }
+  .btn-draw:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 36px rgba(124,92,252,0.7); }
+  .btn-draw:active:not(:disabled) { transform: scale(0.97); }
+  .btn-draw:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .btn-reset {
+    padding: 12px 28px;
+    font-size: 1rem;
+    font-weight: 500;
+    border-radius: 50px;
+    border: 1px solid rgba(255,255,255,0.22);
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.75);
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: background 0.2s;
+  }
+  .btn-reset:hover { background: rgba(255,255,255,0.13); }
+
+  #doneBanner {
+    display: none;
+    padding: 8px 24px;
+    border-radius: 50px;
+    background: rgba(255,200,50,0.12);
+    border: 1px solid rgba(255,200,50,0.35);
+    color: #ffd750;
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-align: center;
+  }
+
+  /* ── RIGHT: history panel ── */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 1.2rem 1.5rem 1rem;
+  }
+  .right-header {
+    font-size: 0.78rem;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 2px;
+    margin-bottom: 0.8rem;
+    flex-shrink: 0;
+    text-align: center;
+  }
+  #historyGrid {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 10px;
+    padding-right: 4px;
+  }
+  #historyGrid::-webkit-scrollbar { width: 4px; }
+  #historyGrid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+
+  .num-chip {
+    width: 82px;
+    height: 82px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.9rem;
+    font-weight: 800;
+    color: #fff;
+    flex-shrink: 0;
+    animation: popIn 0.38s cubic-bezier(0.34,1.56,0.64,1);
+    position: relative;
+    letter-spacing: -1px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  }
+  .num-chip.newest::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.8);
+    animation: fadeRing 1.4s ease forwards;
+  }
+
+  /* Latest drawn: big featured chip at top */
+  .latest-chip {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-shrink: 0;
+  }
+  .latest-chip .lc-ball {
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+    font-weight: 800;
+    color: #fff;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    animation: popIn 0.38s cubic-bezier(0.34,1.56,0.64,1);
+    box-shadow: 0 0 40px rgba(0,0,0,0.4);
+  }
+  .latest-chip .lc-label {
+    font-size: 0.72rem;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 2px;
+    margin-top: 6px;
+  }
+  .divider-line {
+    display: none;
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 0.8rem;
+    flex-shrink: 0;
+  }
+
+  .empty-hint {
+    color: rgba(255,255,255,0.18);
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+    text-align: center;
+    padding: 3rem 0;
+    width: 100%;
+  }
+
+  @keyframes popIn {
+    from { transform: scale(0); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+  @keyframes fadeRing {
+    0%   { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.6); }
+  }
+  @keyframes rollNum {
+    0%   { transform: translateY(-24px); opacity: 0; }
+    60%  { transform: translateY(3px); opacity: 1; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  .rolling { animation: rollNum 0.1s ease forwards; }
+</style>
+</head>
+<body>
+<div class="root">
+
+  <!-- HEADER -->
+  <div class="header">
+    <h1>🎱 賓果抽籤機</h1>
+    <div class="header-controls">
+      <div class="field">
+        <label>最小值</label>
+        <input type="number" id="minVal" value="1" min="1">
+      </div>
+      <div class="field">
+        <label>最大值</label>
+        <input type="number" id="maxVal" value="75" min="2">
+      </div>
+      <div class="stats-row">
+        <div class="stat-box"><div class="val" id="statRemain">75</div><div class="lbl">剩餘</div></div>
+        <div class="stat-box"><div class="val" id="statDrawn">0</div><div class="lbl">已抽</div></div>
+        <div class="stat-box"><div class="val" id="statTotal">75</div><div class="lbl">總數</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLUMNS -->
+  <div class="columns">
+
+    <!-- LEFT: draw -->
+    <div class="left-panel">
+      <div class="ball-ring idle" id="ballRing">
+        <div class="ball-inner">
+          <span id="displayNum" class="hint">等待抽籤</span>
+        </div>
+      </div>
+      <div class="ball-label" id="ballLabel">按下按鈕開始</div>
+      <button class="btn-draw" id="btnDraw" onclick="draw()">抽 ！</button>
+      <button class="btn-reset" onclick="resetGame()">🔄 重新遊戲</button>
+      <div id="doneBanner">🎉 所有號碼已全部抽出！</div>
+    </div>
+
+    <!-- RIGHT: history -->
+    <div class="right-panel">
+      <div class="latest-chip" id="latestChip">
+        <div class="lc-ball" id="lcBall"></div>
+        <div class="lc-label" id="lcLabel">最新號碼</div>
+      </div>
+      <hr class="divider-line" id="dividerLine">
+      <div class="right-header" id="rightHeader">已抽出號碼</div>
+      <div id="historyGrid"><div class="empty-hint">尚未抽出任何號碼</div></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const BALL_COLORS = [
+  'linear-gradient(135deg,#7c5cfc,#c084fc)',
+  'linear-gradient(135deg,#0ea5e9,#38bdf8)',
+  'linear-gradient(135deg,#10b981,#34d399)',
+  'linear-gradient(135deg,#f59e0b,#fbbf24)',
+  'linear-gradient(135deg,#ef4444,#f87171)',
+  'linear-gradient(135deg,#ec4899,#f472b6)',
+  'linear-gradient(135deg,#8b5cf6,#a78bfa)',
+  'linear-gradient(135deg,#06b6d4,#22d3ee)',
+];
+
+let pool = [], drawn = [];
+let rolling = false;
+let rollInterval = null;
+
+function getMin() { return parseInt(document.getElementById('minVal').value) || 1; }
+function getMax() { return parseInt(document.getElementById('maxVal').value) || 75; }
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+function buildPool() {
+  const mn = getMin(), mx = getMax();
+  pool = [];
+  for (let i = mn; i <= mx; i++) pool.push(i);
+  shuffle(pool);
+  drawn = [];
+}
+
+function resetGame() {
+  if (rollInterval) { clearInterval(rollInterval); rollInterval = null; }
+  rolling = false;
+  buildPool();
+  updateStats();
+
+  const dn = document.getElementById('displayNum');
+  dn.textContent = '等待抽籤';
+  dn.className = 'hint';
+  dn.style.fontSize = '';
+
+  document.getElementById('ballLabel').textContent = '按下按鈕開始';
+  const ring = document.getElementById('ballRing');
+  ring.className = 'ball-ring idle';
+  ring.style.background = '';
+  ring.style.boxShadow = '';
+
+  document.getElementById('btnDraw').disabled = false;
+  document.getElementById('doneBanner').style.display = 'none';
+  document.getElementById('historyGrid').innerHTML = '<div class="empty-hint">尚未抽出任何號碼</div>';
+
+  document.getElementById('latestChip').style.display = 'none';
+  document.getElementById('dividerLine').style.display = 'none';
+  document.getElementById('rightHeader').style.display = 'block';
+}
+
+function draw() {
+  if (rolling || !pool.length) return;
+  rolling = true;
+  document.getElementById('btnDraw').disabled = true;
+
+  const finalNum = pool.pop();
+  drawn.push(finalNum);
+  const colorIdx = (drawn.length - 1) % BALL_COLORS.length;
+  const color = BALL_COLORS[colorIdx];
+
+  const mn = getMin(), mx = getMax();
+  const range = mx - mn + 1;
+  const dn = document.getElementById('displayNum');
+  const ring = document.getElementById('ballRing');
+
+  ring.className = 'ball-ring active';
+  ring.style.background = `radial-gradient(circle at 38% 35%, rgba(255,255,255,0.18), transparent 55%), ${color}`;
+
+  let ticks = 0;
+  const totalTicks = 24;
+
+  rollInterval = setInterval(function() {
+    ticks++;
+    const randNum = mn + Math.floor(Math.random() * range);
+    dn.className = '';
+    dn.style.fontSize = randNum >= 100 ? '5.5rem' : '7rem';
+    dn.textContent = randNum;
+    void dn.offsetWidth;
+    dn.classList.add('rolling');
+
+    if (ticks >= totalTicks) {
+      clearInterval(rollInterval);
+      rollInterval = null;
+      setTimeout(function() {
+        dn.textContent = finalNum;
+        dn.className = '';
+        dn.style.fontSize = finalNum >= 100 ? '5.5rem' : '7rem';
+        void dn.offsetWidth;
+        dn.classList.add('rolling');
+
+        document.getElementById('ballLabel').textContent = '第 ' + drawn.length + ' 顆抽出';
+        updateStats();
+        addToHistory(finalNum, color, drawn.length);
+        rolling = false;
+
+        if (pool.length > 0) {
+          document.getElementById('btnDraw').disabled = false;
+        } else {
+          document.getElementById('doneBanner').style.display = 'block';
+          ring.style.background = `radial-gradient(circle at 38% 35%, rgba(255,255,255,0.18), transparent 55%), linear-gradient(135deg,#f59e0b,#fbbf24)`;
+          ring.style.boxShadow = '0 0 80px rgba(245,158,11,0.65), 0 0 160px rgba(245,158,11,0.25)';
+        }
+      }, 80);
+    }
+  }, 55);
+}
+
+function addToHistory(num, color, idx) {
+  const grid = document.getElementById('historyGrid');
+  const empty = grid.querySelector('.empty-hint');
+  if (empty) empty.remove();
+
+  // remove newest from old chips
+  grid.querySelectorAll('.num-chip.newest').forEach(function(c) { c.classList.remove('newest'); });
+
+  // update latest chip (top of right panel)
+  const lc = document.getElementById('latestChip');
+  const lcBall = document.getElementById('lcBall');
+  const lcLabel = document.getElementById('lcLabel');
+  lc.style.display = 'flex';
+  lcBall.style.background = color;
+  lcBall.textContent = num;
+  lcLabel.textContent = '最新：第 ' + idx + ' 顆';
+  // re-trigger animation
+  lcBall.style.animation = 'none';
+  void lcBall.offsetWidth;
+  lcBall.style.animation = '';
+
+  document.getElementById('dividerLine').style.display = 'block';
+  document.getElementById('rightHeader').style.display = 'block';
+
+  // add small chip to grid
+  const chip = document.createElement('div');
+  chip.className = 'num-chip newest';
+  chip.style.background = color;
+  chip.textContent = num;
+  chip.title = '第 ' + idx + ' 顆';
+  grid.prepend(chip);
+}
+
+function updateStats() {
+  const mn = getMin(), mx = getMax();
+  const total = Math.max(0, mx - mn + 1);
+  document.getElementById('statRemain').textContent = pool.length;
+  document.getElementById('statDrawn').textContent = drawn.length;
+  document.getElementById('statTotal').textContent = total;
+}
+
+document.getElementById('minVal').addEventListener('change', resetGame);
+document.getElementById('maxVal').addEventListener('change', resetGame);
+
+resetGame();
+</script>
+</body>
+</html>
